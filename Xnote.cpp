@@ -1,4 +1,5 @@
 #include "Xnote.h"
+#include "resource.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -7,8 +8,75 @@
 
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "user32.lib")
+#pragma comment(linker, "/SUBSYSTEM:WINDOWS")
 
 namespace fs = std::filesystem;
+
+// Create a red apple tray icon
+HICON CreateAppleIcon() {
+    const int size = 64;
+    HDC hdc = GetDC(nullptr);
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP hBitmap = CreateCompatibleBitmap(hdc, size, size);
+    HBITMAP hOldBitmap = (HBITMAP)SelectObject(memDC, hBitmap);
+
+    // Fill with transparent
+    HBRUSH hBrushBg = CreateSolidBrush(RGB(192, 192, 192));
+    RECT rc = {0, 0, size, size};
+    FillRect(memDC, &rc, hBrushBg);
+    DeleteObject(hBrushBg);
+
+    // Apple body (red)
+    HBRUSH hBrushRed = CreateSolidBrush(RGB(220, 30, 30));
+    HPEN hPenRed = CreatePen(PS_SOLID, 1, RGB(180, 20, 20));
+    HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrushRed);
+    HPEN hOldPen = (HPEN)SelectObject(memDC, hPenRed);
+    Ellipse(memDC, 12, 18, 52, 58);
+    SelectObject(memDC, hOldBrush);
+    SelectObject(memDC, hOldPen);
+    DeleteObject(hBrushRed);
+    DeleteObject(hPenRed);
+
+    // Small indent at top
+    HBRUSH hBrushBg2 = CreateSolidBrush(RGB(192, 192, 192));
+    SelectObject(memDC, hBrushBg2);
+    Ellipse(memDC, 26, 14, 38, 24);
+    SelectObject(memDC, hOldBrush);
+    DeleteObject(hBrushBg2);
+
+    // Stem (brown)
+    HPEN hPenBrown = CreatePen(PS_SOLID, 2, RGB(100, 60, 20));
+    SelectObject(memDC, hPenBrown);
+    MoveToEx(memDC, 32, 16, nullptr);
+    LineTo(memDC, 34, 8);
+    SelectObject(memDC, hOldPen);
+    DeleteObject(hPenBrown);
+
+    // Leaf (green)
+    HBRUSH hBrushGreen = CreateSolidBrush(RGB(40, 180, 40));
+    HPEN hPenGreen = CreatePen(PS_SOLID, 1, RGB(20, 120, 20));
+    SelectObject(memDC, hBrushGreen);
+    SelectObject(memDC, hPenGreen);
+    POINT leaf[] = {{34, 10}, {44, 6}, {38, 14}};
+    Polygon(memDC, leaf, 3);
+    SelectObject(memDC, hOldBrush);
+    SelectObject(memDC, hOldPen);
+    DeleteObject(hBrushGreen);
+    DeleteObject(hPenGreen);
+
+    ICONINFO iconInfo = {};
+    iconInfo.fIcon = TRUE;
+    iconInfo.hbmMask = hBitmap;
+    iconInfo.hbmColor = hBitmap;
+    HICON hIcon = CreateIconIndirect(&iconInfo);
+
+    SelectObject(memDC, hOldBitmap);
+    DeleteObject(hBitmap);
+    DeleteDC(memDC);
+    ReleaseDC(nullptr, hdc);
+
+    return hIcon;
+}
 
 // JSON helper (minimal, no external dependency)
 namespace json {
@@ -99,9 +167,8 @@ bool XnoteKernel::Init() {
     nid_.uCallbackMessage = WM_USER + 1;
     strcpy_s(nid_.szTip, "Xnote - Global Hotkey Notes");
 
-    // Create a simple icon
-    HICON hIcon = LoadIcon(nullptr, IDI_APPLICATION);
-    nid_.hIcon = hIcon;
+    // Load red apple icon from embedded resource
+    nid_.hIcon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APPICON));
 
     Shell_NotifyIconA(NIM_ADD, &nid_);
 
@@ -216,6 +283,8 @@ LRESULT CALLBACK XnoteKernel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
             GetCursorPos(&pt);
             HMENU menu = CreatePopupMenu();
             AppendMenuA(menu, MF_STRING, MENU_OPEN_FOLDER, "Open Archive Folder");
+            AppendMenuA(menu, MF_STRING, MENU_VIEW_SHORTCUTS, "View Shortcuts");
+            AppendMenuA(menu, MF_SEPARATOR, 0, nullptr);
             AppendMenuA(menu, MF_STRING, MENU_EXIT, "Exit Xnote");
             SetForegroundWindow(hwnd);
             TrackPopupMenu(menu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
@@ -235,6 +304,17 @@ LRESULT CALLBACK XnoteKernel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
             if (!path.empty() && fs::exists(path)) {
                 ShellExecuteA(nullptr, "open", path.c_str(), nullptr, nullptr, SW_SHOW);
             }
+            return 0;
+        }
+        if (LOWORD(wp) == MENU_VIEW_SHORTCUTS) {
+            std::string msg = "Current Shortcuts:\n\n";
+            for (const auto& plugin : self->plugins_) {
+                msg += plugin.hotkey + "  ->  " + plugin.name + "\n";
+            }
+            if (self->plugins_.empty()) {
+                msg += "(no plugins loaded)";
+            }
+            MessageBoxA(nullptr, msg.c_str(), "Xnote Shortcuts", MB_OK | MB_ICONINFORMATION);
             return 0;
         }
     }
@@ -283,7 +363,7 @@ void XnoteKernel::Shutdown() {
     Shell_NotifyIconA(NIM_DELETE, &nid_);
 }
 
-int main() {
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     XnoteKernel kernel;
     if (!kernel.Init()) return 1;
     kernel.Run();

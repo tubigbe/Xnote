@@ -1,5 +1,6 @@
 #include "plugin_api.h"
 #include <windows.h>
+#include <shlobj.h>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -55,9 +56,6 @@ extern "C" {
         BROWSEINFOA bi = {};
         bi.lpszTitle = "Select Archive Folder";
         bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-        if (!currentPath.empty()) {
-            bi.lpDisplayName = const_cast<char*>(currentPath.c_str());
-        }
 
         LPITEMIDLIST pidl = SHBrowseForFolderA(&bi);
         if (!pidl) return;

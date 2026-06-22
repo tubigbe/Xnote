@@ -1,19 +1,6 @@
-# Build output
-build/
-*.obj
-*.lib
-*.exp
-*.res
-
-# Generated files
-apple.ico
-gen_icon_apple.exe
-gen_icon.exe
+# Python
+__pycache__/
+*.pyc
 
 # Config (user-specific)
 config.json
-
-# Visual Studio
-.vs/
-*.suo
-*.user

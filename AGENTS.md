@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-Xnote is a Windows desktop global-hotkey app (Python). Microkernel + plugin architecture: `Xnote.py` is the kernel, `plugins/*.py` are hotkey extensions.
+Notes is a Windows desktop global-hotkey app (Python). Microkernel + plugin architecture: `notes.py` is the kernel, `plugins/*.py` are hotkey extensions.
 
 ## Runtime
 
 - **Platform**: Windows only (uses `os.startfile`, system tray, `keyboard` global hooks)
 - **Python deps**: `keyboard`, `pystray`, `Pillow` — no requirements.txt; install manually: `pip install keyboard pystray Pillow`
-- **Entry point**: `python Xnote.py`
+- **Entry point**: `python notes.py`
 - **Config**: `config.json` at project root, stores `{"archive_path": "..."}`. Plugins read/write this directly (not through the kernel).
 
 ## Plugin Contract
@@ -24,4 +24,4 @@ The kernel auto-discovers plugins via `glob` + `importlib`. No registration step
 - Hotkey strings are normalized to lowercase with no spaces (e.g. `"alt+shift+o"`).
 - Plugins access shared state (archive path) by reading/writing `config.json` directly — not via kernel globals.
 - The app runs as a system tray icon with no console window. Exit via tray right-click.
-- All UI messages are in Chinese (user is "老肥").
+- All UI messages are in English.

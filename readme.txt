@@ -1,42 +1,42 @@
-# Xnote 架构与设计说明书 (README)
+# Notes - Architecture & Design Document
 
-本项目采用微内核与动态插件（Microkernel & Plugin）的解耦架构设计。主程序作为无业务逻辑的控制核心，通过标准契约接口动态调度外部副函数（插件），实现全系统通用的热键效率扩展。
+This project uses a Microkernel & Plugin decoupled architecture. The main program acts as a logic-free control core, dynamically dispatching external plugin functions through standard contract interfaces, enabling system-wide hotkey efficiency extensions.
 
-一、 主程序（内核）核心功能
+## I. Core Kernel Functions
 
-主程序（`Xnote.py`）不承载任何具体的热键功能逻辑，其核心职责定义为以下四项：
+The main program (`notes.py`) carries no hotkey business logic. Its core responsibilities are:
 
-环境与记忆感知：启动时自动检索并读取本地 `config.json` 配置文件。若为首次运行或路径失效，通过轻量级 GUI 引导用户确立随笔归档的总目录。
+Environment & Memory Awareness: On startup, automatically reads the local `config.json`. On first run or invalid path, guides the user to set up the notes archive folder via a lightweight GUI.
 
-原生系统调度：配置确立后，内核自动调用 Windows API 无感唤出原生的文件资源管理器并定位至目标总目录，将文件增删与浏览等管理工作完全托管给操作系统。
+Native System Dispatch: After config is set, the kernel invokes the Windows API to open the native file explorer at the target directory, delegating all file management to the OS.
 
-动态多插件加载引擎：内核通过 `glob` 与 `importlib` 机制，在运行时静默扫描并解析 `plugins/` 目录下的所有独立 `.py` 副函数文件，无需重新编译或封装即可实现功能的即插即用。
+Dynamic Multi-Plugin Loading Engine: The kernel scans and loads all `.py` plugin files in the `plugins/` directory at runtime via `glob` and `importlib`, enabling hot-pluggable features without recompilation.
 
-全局热键碰撞拦截中心：内核内置统一的“热键注册表”。无论是何种渠道加载的副函数，只要其企图注册的硬件热键在注册表中已存在，拦截器会立刻终止该功能的挂载，并抛出精准的 Windows 错误弹窗，提示用户具体的冲突文件名称，以此保护底层系统的稳定性。
+Global Hotkey Collision Interceptor: The kernel maintains a unified hotkey registry. If any plugin tries to register an already-taken hotkey, the interceptor immediately aborts loading and shows a Windows error dialog with the conflicting file names.
 
-隐形守护与生命周期管理：主程序彻底隐藏了常规的任务栏窗口与 CMD 控制台，采用系统托盘（Tray）图标常驻于 Windows 通知区域。当用户从托盘右键退出时，内核负责安全释放所有系统级硬件钩子并销毁进程。
+Stealth Guardian & Lifecycle Management: The program runs as a system tray icon in the Windows notification area with no taskbar window or console. On tray right-click exit, the kernel safely releases all system-level keyboard hooks.
 
-二、 主函数与副函数的沟通机制（契约规范）
+## II. Plugin Contract
 
-主函数与副函数之间不通过全局变量进行显式传参，而是基于**动态反射机制**和标准的契约规范（Interface Contract）进行无感沟通。
+Plugins do not communicate with the kernel via global variables. Instead, they use dynamic reflection and a standard interface contract.
 
-1. 副函数（插件）侧的合规规范
+### Plugin Side
 
-任何放入 `plugins/` 目录下的副函数文件，必须且只能通过以下两个标准接口与主程序达成通讯：
+Any file placed in `plugins/` must expose exactly two standard interfaces:
 
-`HOTKEY`（字符串变量）**：向主程序声明该副函数期望占用的全局系统级热键組合（如 `"alt+t"`）。
-`run()`（无参函数）**：封装该功能的具体核心执行体。当对应的硬件热键被触发时，主程序将直接回调此函数。
+- `HOTKEY` (string variable): Declares the global hotkey combination this plugin wants (e.g. `"alt+t"`).
+- `run()` (zero-arg function): Contains the core logic executed when the hotkey fires.
 
-2. 主函数（内核）侧的解析流
+### Kernel Side
 
-主程序与副函数的动态沟通由以下时序闭环驱动：
+The kernel drives plugin loading via this flow:
 
-主程序遍历 plugins/*.py ──────> 读取文件字节码 ──────> 提取模块中的 HOTKEY 与 run 
-                                                             │
-   ┌─────────────────────────────────────────────────────────┘
-   ▼
-进入冲突校验 ──────(无冲突)──────> 写入内存注册表 ──────> 挂载至键盘监听内核 (keyboard)
+1. Scan plugins/*.py
+2. Read file bytecode
+3. Extract HOTKEY and run from each module
+4. Run conflict check
+5. If no conflict -> register in memory registry -> attach to keyboard listener (keyboard library)
 
-3. 数据隔离原则
+### Data Isolation
 
-为了确保架构的极致解耦，所有的副函数均具备独立的运行上下文。若副函数（如修改路径、打开文件夹等）需要获取或改变随笔的归档路径，它们将绕过主程序，直接对同级目录下的 `config.json` 进行原子的读写操作。这种设计保证了即使内核发生迭代，原有的副函数脚本依然具备完美的向前兼容性。
+All plugins have independent runtime contexts. If a plugin needs to access or change the archive path, it reads/writes `config.json` directly, bypassing the kernel. This ensures forward compatibility even as the kernel evolves.

@@ -14,55 +14,47 @@ extern "C" {
         localtime_s(&tm_info, &now);
 
         char timestamp[64];
-        snprintf(timestamp, sizeof(timestamp), "%02d:%02d %d/%d/%d\n\n",
+        snprintf(timestamp, sizeof(timestamp), "%02d:%02d %d/%d/%d\r\n\r\n",
             tm_info.tm_hour, tm_info.tm_min,
             tm_info.tm_year + 1900, tm_info.tm_mon + 1, tm_info.tm_mday);
 
-        // Simulate typing the timestamp
+        // Copy to clipboard
         size_t len = strlen(timestamp);
-        INPUT inputs[256];
-        int count = 0;
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * sizeof(char));
+        if (!hMem) return;
 
-        for (size_t i = 0; i < len && count < 250; i++) {
-            char c = timestamp[i];
-            if (c == '\n') {
-                inputs[count].type = INPUT_KEYBOARD;
-                inputs[count].ki.wVk = VK_RETURN;
-                inputs[count].ki.dwFlags = 0;
-                count++;
-                inputs[count].type = INPUT_KEYBOARD;
-                inputs[count].ki.wVk = VK_RETURN;
-                inputs[count].ki.dwFlags = KEYEVENTF_KEYUP;
-                count++;
-            } else {
-                SHORT vk = VkKeyScanA(c);
-                if (vk != -1) {
-                    if (vk & 0x100) { // Shift needed
-                        inputs[count].type = INPUT_KEYBOARD;
-                        inputs[count].ki.wVk = VK_SHIFT;
-                        inputs[count].ki.dwFlags = 0;
-                        count++;
-                    }
-                    inputs[count].type = INPUT_KEYBOARD;
-                    inputs[count].ki.wVk = vk & 0xFF;
-                    inputs[count].ki.dwFlags = 0;
-                    count++;
-                    inputs[count].type = INPUT_KEYBOARD;
-                    inputs[count].ki.wVk = vk & 0xFF;
-                    inputs[count].ki.dwFlags = KEYEVENTF_KEYUP;
-                    count++;
-                    if (vk & 0x100) {
-                        inputs[count].type = INPUT_KEYBOARD;
-                        inputs[count].ki.wVk = VK_SHIFT;
-                        inputs[count].ki.dwFlags = KEYEVENTF_KEYUP;
-                        count++;
-                    }
-                }
-            }
-        }
+        char* pMem = (char*)GlobalLock(hMem);
+        memcpy(pMem, timestamp, len + 1);
+        GlobalUnlock(hMem);
 
-        if (count > 0) {
-            SendInput(count, inputs, sizeof(INPUT));
+        if (!OpenClipboard(nullptr)) {
+            GlobalFree(hMem);
+            return;
         }
+        EmptyClipboard();
+        SetClipboardData(CF_TEXT, hMem);
+        CloseClipboard();
+
+        // Small delay to ensure clipboard is ready
+        Sleep(50);
+
+        // Simulate Ctrl+V to paste
+        INPUT inputs[4] = {};
+
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].ki.wVk = VK_CONTROL;
+
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].ki.wVk = 'V';
+
+        inputs[2].type = INPUT_KEYBOARD;
+        inputs[2].ki.wVk = 'V';
+        inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        inputs[3].type = INPUT_KEYBOARD;
+        inputs[3].ki.wVk = VK_CONTROL;
+        inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        SendInput(4, inputs, sizeof(INPUT));
     }
 }

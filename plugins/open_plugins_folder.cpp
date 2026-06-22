@@ -14,10 +14,11 @@ extern "C" {
         char buf[MAX_PATH];
         GetModuleFileNameA(nullptr, buf, MAX_PATH);
         fs::path exePath(buf);
-        fs::path projectDir = exePath.parent_path();
+        // EXE is in build/, plugins are in build/plugins/, project root is one up
+        fs::path projectDir = exePath.parent_path().parent_path();
 
         if (fs::exists(projectDir)) {
-            ShellExecuteA(nullptr, "open", projectDir.string().c_str(), nullptr, nullptr, SW_SHOW);
+            ShellExecuteA(nullptr, "open", "explorer.exe", projectDir.string().c_str(), nullptr, SW_SHOW);
         }
     }
 }

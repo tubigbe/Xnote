@@ -123,7 +123,7 @@ std::string XnoteKernel::GetConfigPath() {
     char buf[MAX_PATH];
     GetModuleFileNameA(nullptr, buf, MAX_PATH);
     fs::path p(buf);
-    return (p.parent_path() / "config.json").string();
+    return (p.parent_path().parent_path() / "config.json").string();
 }
 
 std::string XnoteKernel::ReadArchivePath() {

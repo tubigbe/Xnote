@@ -98,12 +98,13 @@ def load_dynamic_plugins():
 
         try:
             spec = importlib.util.spec_from_file_location(file_name[:-3], file_path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
 
-            if hasattr(module, "HOTKEY") and hasattr(module, "run"):
-                plugin_hotkey = getattr(module, "HOTKEY")
-                register_hotkey(plugin_hotkey, module.run, f"plugin -> {file_name}")
+                if hasattr(module, "HOTKEY") and hasattr(module, "run"):
+                    plugin_hotkey = getattr(module, "HOTKEY")
+                    register_hotkey(plugin_hotkey, module.run, f"plugin -> {file_name}")
         except Exception as e:
             print(f"Error loading plugin {file_name}: {e}")
 

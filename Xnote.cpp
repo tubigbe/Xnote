@@ -1,6 +1,5 @@
 #include "Xnote.h"
 #include "resource.h"
-#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -8,77 +7,13 @@
 
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
 #pragma comment(linker, "/SUBSYSTEM:WINDOWS")
 
 namespace fs = std::filesystem;
 
-// Create a red apple tray icon
-HICON CreateAppleIcon() {
-    const int size = 64;
-    HDC hdc = GetDC(nullptr);
-    HDC memDC = CreateCompatibleDC(hdc);
-    HBITMAP hBitmap = CreateCompatibleBitmap(hdc, size, size);
-    HBITMAP hOldBitmap = (HBITMAP)SelectObject(memDC, hBitmap);
+static XnoteKernel* g_instance = nullptr;
 
-    // Fill with transparent
-    HBRUSH hBrushBg = CreateSolidBrush(RGB(192, 192, 192));
-    RECT rc = {0, 0, size, size};
-    FillRect(memDC, &rc, hBrushBg);
-    DeleteObject(hBrushBg);
-
-    // Apple body (red)
-    HBRUSH hBrushRed = CreateSolidBrush(RGB(220, 30, 30));
-    HPEN hPenRed = CreatePen(PS_SOLID, 1, RGB(180, 20, 20));
-    HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrushRed);
-    HPEN hOldPen = (HPEN)SelectObject(memDC, hPenRed);
-    Ellipse(memDC, 12, 18, 52, 58);
-    SelectObject(memDC, hOldBrush);
-    SelectObject(memDC, hOldPen);
-    DeleteObject(hBrushRed);
-    DeleteObject(hPenRed);
-
-    // Small indent at top
-    HBRUSH hBrushBg2 = CreateSolidBrush(RGB(192, 192, 192));
-    SelectObject(memDC, hBrushBg2);
-    Ellipse(memDC, 26, 14, 38, 24);
-    SelectObject(memDC, hOldBrush);
-    DeleteObject(hBrushBg2);
-
-    // Stem (brown)
-    HPEN hPenBrown = CreatePen(PS_SOLID, 2, RGB(100, 60, 20));
-    SelectObject(memDC, hPenBrown);
-    MoveToEx(memDC, 32, 16, nullptr);
-    LineTo(memDC, 34, 8);
-    SelectObject(memDC, hOldPen);
-    DeleteObject(hPenBrown);
-
-    // Leaf (green)
-    HBRUSH hBrushGreen = CreateSolidBrush(RGB(40, 180, 40));
-    HPEN hPenGreen = CreatePen(PS_SOLID, 1, RGB(20, 120, 20));
-    SelectObject(memDC, hBrushGreen);
-    SelectObject(memDC, hPenGreen);
-    POINT leaf[] = {{34, 10}, {44, 6}, {38, 14}};
-    Polygon(memDC, leaf, 3);
-    SelectObject(memDC, hOldBrush);
-    SelectObject(memDC, hOldPen);
-    DeleteObject(hBrushGreen);
-    DeleteObject(hPenGreen);
-
-    ICONINFO iconInfo = {};
-    iconInfo.fIcon = TRUE;
-    iconInfo.hbmMask = hBitmap;
-    iconInfo.hbmColor = hBitmap;
-    HICON hIcon = CreateIconIndirect(&iconInfo);
-
-    SelectObject(memDC, hOldBitmap);
-    DeleteObject(hBitmap);
-    DeleteDC(memDC);
-    ReleaseDC(nullptr, hdc);
-
-    return hIcon;
-}
-
-// JSON helper (minimal, no external dependency)
 namespace json {
     std::string ReadFile(const std::string& path) {
         std::ifstream f(path);
@@ -113,7 +48,9 @@ namespace json {
     }
 }
 
-XnoteKernel::XnoteKernel() {}
+XnoteKernel::XnoteKernel() {
+    g_instance = this;
+}
 
 XnoteKernel::~XnoteKernel() {
     Shutdown();
@@ -142,12 +79,28 @@ void XnoteKernel::ShowError(const std::string& msg) {
     MessageBoxA(nullptr, msg.c_str(), "Xnote Error", MB_OK | MB_ICONERROR);
 }
 
-void XnoteKernel::ShowInfo(const std::string& msg) {
-    MessageBoxA(nullptr, msg.c_str(), "Xnote", MB_OK | MB_ICONINFORMATION);
+bool XnoteKernel::ParseHotkey(const std::string& hotkey, UINT& outMod, UINT& outVk) {
+    std::string s = hotkey;
+    s.erase(std::remove(s.begin(), s.end(), ' '), s.end());
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+
+    outMod = 0;
+    outVk = 0;
+    std::istringstream iss(s);
+    std::string token;
+
+    while (std::getline(iss, token, '+')) {
+        if (token == "alt") outMod |= MOD_ALT;
+        else if (token == "ctrl") outMod |= MOD_CONTROL;
+        else if (token == "shift") outMod |= MOD_SHIFT;
+        else if (token == "win") outMod |= MOD_WIN;
+        else if (token.length() == 1) outVk = toupper(token[0]);
+    }
+
+    return (outMod != 0 && outVk != 0);
 }
 
 bool XnoteKernel::Init() {
-    // Create hidden window for message processing
     WNDCLASSA wc = {};
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = GetModuleHandleA(nullptr);
@@ -159,28 +112,28 @@ bool XnoteKernel::Init() {
 
     SetWindowLongPtrA(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 
-    // Create tray icon
     nid_.cbSize = sizeof(NOTIFYICONDATA);
     nid_.hWnd = hwnd_;
     nid_.uID = TRAY_ICON_ID;
     nid_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid_.uCallbackMessage = WM_USER + 1;
     strcpy_s(nid_.szTip, "Xnote - Global Hotkey Notes");
-
-    // Load red apple icon from embedded resource
     nid_.hIcon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APPICON));
-
     Shell_NotifyIconA(NIM_ADD, &nid_);
 
-    // Try to open the archive folder on startup
     std::string archivePath = ReadArchivePath();
     if (!archivePath.empty() && fs::exists(archivePath)) {
         ShellExecuteA(nullptr, "open", archivePath.c_str(), nullptr, nullptr, SW_SHOW);
     }
 
-    // Load plugins
     if (!LoadPlugins()) {
         ShowError("Failed to load plugins!");
+        return false;
+    }
+
+    keyboardHook_ = SetWindowsHookExA(WH_KEYBOARD_LL, KeyboardProc, GetModuleHandleA(nullptr), 0);
+    if (!keyboardHook_) {
+        ShowError("Failed to install keyboard hook!");
         return false;
     }
 
@@ -219,63 +172,74 @@ bool XnoteKernel::LoadPlugins() {
         plugin.hotkey = getHotkey();
         plugin.run = run;
 
-        if (!RegisterHotkey(plugin.hotkey, plugin.name)) {
+        UINT mod = 0, vk = 0;
+        if (!ParseHotkey(plugin.hotkey, mod, vk)) {
             FreeLibrary(plugin.handle);
             continue;
         }
 
+        // Check for conflicts
+        for (auto& h : hotkeys_) {
+            if (h.modifier == mod && h.vk == vk) {
+                ShowError("Hotkey conflict: " + plugin.hotkey + "\nUsed by: " + h.owner + " and " + plugin.name);
+                FreeLibrary(plugin.handle);
+                goto next;
+            }
+        }
+
+        hotkeys_.push_back({mod, vk, plugin.name, plugin.run});
         plugins_.push_back(plugin);
+        next:;
     }
 
     return true;
 }
 
-bool XnoteKernel::RegisterHotkey(const std::string& hotkey, const std::string& owner) {
-    std::string normalized = hotkey;
-    normalized.erase(std::remove(normalized.begin(), normalized.end(), ' '), normalized.end());
-    std::transform(normalized.begin(), normalized.end(), normalized.begin(), ::tolower);
+LRESULT CALLBACK XnoteKernel::KeyboardProc(int nCode, WPARAM wp, LPARAM lp) {
+    if (nCode >= 0 && g_instance) {
+        KBDLLHOOKSTRUCT* ks = reinterpret_cast<KBDLLHOOKSTRUCT*>(lp);
 
-    if (hotkeyRegistry_.count(normalized)) {
-        ShowError("Hotkey conflict: " + normalized + "\nUsed by: " + hotkeyRegistry_[normalized] + " and " + owner);
-        return false;
-    }
+        // Track modifier state
+        if (ks->vkCode == VK_LMENU || ks->vkCode == VK_RMENU)
+            g_instance->altHeld_ = (wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN);
+        if (ks->vkCode == VK_LCONTROL || ks->vkCode == VK_RCONTROL)
+            g_instance->ctrlHeld_ = (wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN);
+        if (ks->vkCode == VK_LSHIFT || ks->vkCode == VK_RSHIFT)
+            g_instance->shiftHeld_ = (wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN);
+        if (ks->vkCode == VK_LWIN || ks->vkCode == VK_RWIN)
+            g_instance->winHeld_ = (wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN);
 
-    UINT modifiers = 0;
-    UINT vk = 0;
-    std::istringstream iss(normalized);
-    std::string token;
+        // Only trigger on key down (not repeat)
+        if (wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN) {
+            UINT currentMod = 0;
+            if (g_instance->altHeld_) currentMod |= MOD_ALT;
+            if (g_instance->ctrlHeld_) currentMod |= MOD_CONTROL;
+            if (g_instance->shiftHeld_) currentMod |= MOD_SHIFT;
+            if (g_instance->winHeld_) currentMod |= MOD_WIN;
 
-    while (std::getline(iss, token, '+')) {
-        if (token == "alt") modifiers |= MOD_ALT;
-        else if (token == "ctrl") modifiers |= MOD_CONTROL;
-        else if (token == "shift") modifiers |= MOD_SHIFT;
-        else if (token == "win") modifiers |= MOD_WIN;
-        else if (token.length() == 1) {
-            char c = toupper(token[0]);
-            vk = c;
+            for (auto& h : g_instance->hotkeys_) {
+                if (h.modifier == currentMod && h.vk == ks->vkCode) {
+                    // Store and post to main thread
+                    g_instance->pendingRun_ = h.run;
+                    PostMessage(g_instance->hwnd_, WM_APP + 1, 0, 0);
+                    return 1; // Suppress the keystroke
+                }
+            }
         }
     }
-
-    if (!modifiers || !vk) return false;
-
-    int id = nextHotkeyId_++;
-    if (!RegisterHotKey(hwnd_, id, modifiers, vk)) return false;
-
-    hotkeyRegistry_[normalized] = owner;
-    hotkeyIdMap_[id] = normalized;
-    return true;
-}
-
-void XnoteKernel::UnregisterAllHotkeys() {
-    for (auto& [id, key] : hotkeyIdMap_) {
-        UnregisterHotKey(hwnd_, id);
-    }
-    hotkeyIdMap_.clear();
-    hotkeyRegistry_.clear();
+    return CallNextHookEx(nullptr, nCode, wp, lp);
 }
 
 LRESULT CALLBACK XnoteKernel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     XnoteKernel* self = reinterpret_cast<XnoteKernel*>(GetWindowLongPtrA(hwnd, GWLP_USERDATA));
+
+    if (msg == WM_APP + 1) {
+        if (self->pendingRun_) {
+            self->pendingRun_();
+            self->pendingRun_ = nullptr;
+        }
+        return 0;
+    }
 
     if (msg == WM_USER + 1) {
         if (lp == WM_RBUTTONUP) {
@@ -319,23 +283,6 @@ LRESULT CALLBACK XnoteKernel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
         }
     }
 
-    if (msg == WM_HOTKEY) {
-        int id = static_cast<int>(wp);
-        if (self->hotkeyIdMap_.count(id)) {
-            std::string key = self->hotkeyIdMap_[id];
-            for (auto& plugin : self->plugins_) {
-                std::string nk = plugin.hotkey;
-                nk.erase(std::remove(nk.begin(), nk.end(), ' '), nk.end());
-                std::transform(nk.begin(), nk.end(), nk.begin(), ::tolower);
-                if (nk == key) {
-                    plugin.run();
-                    break;
-                }
-            }
-        }
-        return 0;
-    }
-
     if (msg == WM_DESTROY) {
         PostQuitMessage(0);
         return 0;
@@ -353,12 +300,16 @@ void XnoteKernel::Run() {
 }
 
 void XnoteKernel::Shutdown() {
-    UnregisterAllHotkeys();
+    if (keyboardHook_) {
+        UnhookWindowsHookEx(keyboardHook_);
+        keyboardHook_ = nullptr;
+    }
 
     for (auto& plugin : plugins_) {
         if (plugin.handle) FreeLibrary(plugin.handle);
     }
     plugins_.clear();
+    hotkeys_.clear();
 
     Shell_NotifyIconA(NIM_DELETE, &nid_);
 }

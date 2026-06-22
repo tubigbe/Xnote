@@ -13,6 +13,13 @@ struct Plugin {
     HMODULE handle = nullptr;
 };
 
+struct HotkeyDef {
+    UINT modifier;      // MOD_ALT, MOD_CONTROL, MOD_SHIFT
+    UINT vk;            // virtual key code
+    std::string owner;
+    std::function<void()> run;
+};
+
 class XnoteKernel {
 public:
     XnoteKernel();
@@ -28,20 +35,23 @@ public:
 
 private:
     bool LoadPlugins();
-    bool RegisterHotkey(const std::string& hotkey, const std::string& owner);
-    void UnregisterAllHotkeys();
+    bool ParseHotkey(const std::string& hotkey, UINT& outMod, UINT& outVk);
     void ShowError(const std::string& msg);
-    void ShowInfo(const std::string& msg);
 
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+    static LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wp, LPARAM lp);
 
     HWND hwnd_ = nullptr;
     NOTIFYICONDATA nid_ = {};
+    HHOOK keyboardHook_ = nullptr;
     std::vector<Plugin> plugins_;
-    std::unordered_map<std::string, std::string> hotkeyRegistry_;
-    std::unordered_map<int, std::string> hotkeyIdMap_;
-    int nextHotkeyId_ = 1;
-    static const UINT WM_HOTKEY_MSG = 0x0312;
+    std::vector<HotkeyDef> hotkeys_;
+    std::function<void()> pendingRun_;
+    bool altHeld_ = false;
+    bool ctrlHeld_ = false;
+    bool shiftHeld_ = false;
+    bool winHeld_ = false;
+
     static const int TRAY_ICON_ID = 1;
     static const int MENU_OPEN_FOLDER = 1001;
     static const int MENU_VIEW_SHORTCUTS = 1002;

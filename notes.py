@@ -19,6 +19,13 @@ else:
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 PLUGIN_DIR = os.path.join(BASE_DIR, "plugins")
 HOTKEY_REGISTRY = {}
+REGISTERED_HOTKEYS = []
+
+MODIFIER_KEYS = {
+    'alt': {'alt', 'left alt', 'right alt'},
+    'ctrl': {'ctrl', 'left ctrl', 'right ctrl'},
+    'shift': {'shift', 'left shift', 'right shift'},
+}
 
 
 def get_or_create_config():
@@ -67,6 +74,43 @@ def tray_open_folder(icon=None, item=None):
     messagebox.showerror("Error", "Cannot open folder — path is invalid or config is missing!")
 
 
+def tray_view_shortcuts(icon=None, item=None):
+    lines = []
+    for h in REGISTERED_HOTKEYS:
+        lines.append(f"{h['hotkey']}  ->  {h['owner']}")
+    if not lines:
+        msg = "No plugins loaded."
+    else:
+        msg = "Current Shortcuts:\n\n" + "\n".join(lines)
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showinfo("Shortcuts", msg)
+    root.destroy()
+
+
+def suppress_modifier(event):
+    if event.event_type != keyboard.KEY_DOWN:
+        return
+    name = event.name.lower()
+    for hotkey_info in REGISTERED_HOTKEYS:
+        parts = hotkey_info['hotkey'].split('+')
+        modifiers_in_combo = set()
+        for p in parts:
+            p = p.strip()
+            for mod_key, mod_names in MODIFIER_KEYS.items():
+                if p == mod_key:
+                    modifiers_in_combo.add(mod_key)
+        if not modifiers_in_combo:
+            continue
+        active_mods = set()
+        for mod_key, mod_names in MODIFIER_KEYS.items():
+            if name in mod_names:
+                active_mods.add(mod_key)
+        if active_mods and active_mods.issubset(modifiers_in_combo):
+            return False
+    return
+
+
 def register_hotkey(hotkey_str, callback_func, owner_name):
     normalized_hotkey = hotkey_str.strip().lower().replace(" ", "")
 
@@ -86,7 +130,8 @@ def register_hotkey(hotkey_str, callback_func, owner_name):
         return False
 
     HOTKEY_REGISTRY[normalized_hotkey] = owner_name
-    keyboard.add_hotkey(normalized_hotkey, callback_func, suppress=True)
+    REGISTERED_HOTKEYS.append({'hotkey': normalized_hotkey, 'owner': owner_name})
+    keyboard.add_hotkey(normalized_hotkey, callback_func)
     return True
 
 
@@ -142,8 +187,12 @@ if __name__ == "__main__":
 
     load_dynamic_plugins()
 
+    keyboard.hook(suppress_modifier)
+
     tray_menu = pystray.Menu(
         item('Open Notes Folder', tray_open_folder),
+        item('View Shortcuts', tray_view_shortcuts),
+        pystray.Menu.SEPARATOR,
         item('Exit Notes', exit_program)
     )
     icon = pystray.Icon("notes", create_apple_icon(), "Notes - Active", menu=tray_menu)

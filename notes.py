@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import glob
 import importlib.util
@@ -10,8 +11,13 @@ import pystray
 from pystray import MenuItem as item
 from PIL import Image, ImageDraw
 
-CONFIG_FILE = "config.json"
-PLUGIN_DIR = "plugins"
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+PLUGIN_DIR = os.path.join(BASE_DIR, "plugins")
 HOTKEY_REGISTRY = {}
 
 
@@ -80,7 +86,7 @@ def register_hotkey(hotkey_str, callback_func, owner_name):
         return False
 
     HOTKEY_REGISTRY[normalized_hotkey] = owner_name
-    keyboard.add_hotkey(normalized_hotkey, callback_func)
+    keyboard.add_hotkey(normalized_hotkey, callback_func, suppress=True)
     return True
 
 
@@ -114,18 +120,15 @@ def create_apple_icon():
     draw = ImageDraw.Draw(img)
 
     draw.ellipse([12, 18, 52, 58], fill=(220, 30, 30), outline=(180, 20, 20))
-
     draw.ellipse([26, 14, 38, 24], fill=(0, 0, 0, 0))
-
     draw.line([(32, 16), (34, 8)], fill=(100, 60, 20), width=2)
-
     draw.polygon([(34, 10), (44, 6), (38, 14)], fill=(40, 180, 40))
 
     return img
 
 
 def exit_program(icon, item):
-    keyboard.remove_all_hotkeys()
+    keyboard.unhook_all()
     icon.stop()
 
 

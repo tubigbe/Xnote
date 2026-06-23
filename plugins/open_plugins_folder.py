@@ -1,11 +1,14 @@
 import os
+import sys
+
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 HOTKEY = "alt+shift+o"
 
 
 def run():
-    plugin_dir = os.path.dirname(os.path.abspath(__file__))
-    project_dir = os.path.dirname(plugin_dir)
-
-    if os.path.exists(project_dir):
-        os.startfile(project_dir)
+    if os.path.exists(BASE_DIR):
+        os.startfile(BASE_DIR)

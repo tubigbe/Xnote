@@ -1,11 +1,17 @@
 import os
+import sys
 import json
 import tkinter as tk
 from tkinter import messagebox
 from datetime import datetime
 
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 HOTKEY = "alt+o"
-CONFIG_FILE = "config.json"
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 
 
 def run():
@@ -34,7 +40,6 @@ def run():
                     return
         except Exception as e:
             print(f"Plugin error: {e}")
-            pass
 
     root = tk.Tk()
     root.withdraw()

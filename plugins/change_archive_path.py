@@ -1,10 +1,16 @@
 import os
+import sys
 import json
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 HOTKEY = "alt+p"
-CONFIG_FILE = "config.json"
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 
 
 def run():
